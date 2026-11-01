@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- The whole frontend: one page, no build step. Left: the library (ingest). Right: ask, the checked answer, the trace.
+     Click a citation to see the page with the exact box the sentence rests on (big idea 1, the pointer). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas & Sub-agents · template</title>
+<style>
+  :root { --ink:#15191E; --mute:#5F6368; --line:#E3E6EA; --paper:#F1F3F4; --blue:#0B57D0; --teal:#00695C; --red:#C5221F; --yel:#FBBC04; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 Inter, system-ui, -apple-system, "Segoe UI", "Noto Sans Devanagari", "Noto Sans Thai", sans-serif; color: var(--ink); background: var(--paper); }
+  header { padding: 18px 28px; background: var(--ink); color: #fff; display: flex; gap: 14px; align-items: baseline; }
+  header b { font-size: 20px; } header span { color: #9AA0A6; font-size: 14px; }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 20px; padding: 20px 28px; }
+  section { background: #fff; border-radius: 16px; padding: 18px 20px; }
+  h2 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); margin: 0 0 12px; }
+  .item { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .item small { color: var(--mute); }
+  input[type=text] { width: 100%; font: inherit; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 999px; padding: 10px 18px; background: var(--blue); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .s { margin: 10px 0; } .s .why { font-size: 12px; color: var(--teal); }
+  .removed { color: var(--mute); text-decoration: line-through; } .removed + .why { color: var(--red); text-decoration: none; }
+  .cite { display: inline-block; margin-left: 6px; padding: 1px 9px; border-radius: 999px; background: var(--yel); font-size: 12px; font-weight: 700; cursor: pointer; }
+  .trace { font-size: 13px; color: var(--mute); border-left: 3px solid var(--line); padding-left: 12px; }
+  .trace b { color: var(--ink); }
+  #viewer { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; place-items: center; }
+  #viewer .frame { position: relative; max-width: 90vw; max-height: 90vh; }
+  #viewer img { max-width: 90vw; max-height: 88vh; display: block; border-radius: 6px; }
+  #viewer .box { position: absolute; border: 3px solid var(--blue); background: rgba(11,87,208,.12); border-radius: 4px; }
+  #viewer p { color: #fff; margin: 8px 0 0; font-size: 14px; }
+  .busy { color: var(--mute); font-size: 14px; }
+</style>
+</head>
+<body>
+<header><b>Atlas &amp; Sub-agents</b><span>ingest once · ask many times · every sentence points to its page and box</span></header>
+<main>
+  <section>
+    <h2>Ingest · the library</h2>
+    <input type="file" id="file" accept=".pdf,.png,.jpg,.jpeg,.webp">
+    <div class="busy" id="ingesting"></div>
+    <div id="items"></div>
+  </section>
+  <section>
+    <h2>Ask · in any language</h2>
+    <form id="ask">
+      <input type="text" id="q" placeholder="Which roads were blocked after the flood?" required>
+      <div class="row"><button id="go">Ask</button><label class="busy">optional photo, used as a lens: <input type="file" id="photo" accept="image/*"></label></div>
+    </form>
+    <div id="answer"></div>
+  </section>
+</main>
+<div id="viewer"><div class="frame"><img id="vimg" alt="Cited page"><div id="vbox"></div><p id="vcap"></p></div></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function loadItems() {
+  const items = await (await fetch("/api/items")).json();
+  $("items").innerHTML = items.map((i) => `<div class="item">${esc(i.title)}<br><small>${i.kind} · ${i.pages} page(s)</small></div>`).join("") || '<p class="busy">Add a PDF or a photo to begin.</p>';
+}
+
+$("file").onchange = async () => {
+  const f = $("file").files[0]; if (!f) return;
+  $("ingesting").textContent = `Reading ${f.name} once…`;
+  const body = new FormData(); body.append("file", f);
+  const res = await fetch("/api/items", { method: "POST", body }).catch(() => null);
+  if (!res || !res.ok) { $("ingesting").textContent = `Could not read ${f.name} (${res ? res.status : "no connection"}).`; return; }
+  const r = await res.json();
+  $("ingesting").textContent = r.duplicate ? "Already read: same fingerprint." : `Read: ${r.blocks} pointers, ${r.passages} passages, ${r.atlas_rows} atlas rows.`;
+  $("file").value = ""; loadItems();
+};
+
+let cites = [];
+$("ask").onsubmit = async (e) => {
+  e.preventDefault(); $("go").disabled = true; $("answer").innerHTML = '<p class="busy">Planning, sending scouts, keeping, writing, checking…</p>';
+  const body = new FormData(); body.append("text", $("q").value);
+  if ($("photo").files[0]) body.append("photo", $("photo").files[0]);
+  const res = await fetch("/api/ask", { method: "POST", body }).catch(() => null);
+  $("go").disabled = false;
+  if (!res || !res.ok) { $("answer").innerHTML = `<p class="busy">Something failed (${res ? res.status : "no connection"}). Check the server log.</p>`; return; }
+  const a = await res.json();
+  cites = [];
+  const sent = a.sentences.map((s) => `<div class="s">${esc(s.text)}${s.citations.map((c) => `<span class="cite" data-i="${cites.push(c) - 1}">${esc(c.title)} · p.${c.page}</span>`).join("")}<div class="why">${esc(s.checked)}</div></div>`).join("");
+  const rem = a.removed.map((s) => `<div class="s"><span class="removed">${esc(s.text)}</span><div class="why">Removed: ${esc(s.reason)}</div></div>`).join("");
+  const tr = a.trace.map((t) => `<div><b>${t.step}</b> · ${t.s} s · ${esc(t.detail)}</div>`).join("");
+  $("answer").innerHTML = sent + rem + `<h2 style="margin-top:20px">What happened</h2><div class="trace">${tr}</div>`;
+  loadItems();
+};
+
+// a citation opens its page with the box lit up
+$("answer").onclick = (e) => {
+  const el = e.target.closest(".cite"); if (!el) return;
+  const c = cites[+el.dataset.i];
+  $("vimg").onload = () => {
+    const k = $("vimg").clientWidth / c.w;
+    Object.assign($("vbox").style, { left: c.x0 * k + "px", top: c.y0 * k + "px", width: (c.x1 - c.x0) * k + "px", height: (c.y1 - c.y0) * k + "px" });
+    $("vbox").className = "box";
+  };
+  $("vimg").src = "/pages/" + c.image; $("vcap").textContent = `${c.title} · page ${c.page} · ${c.block_id}`;
+  $("viewer").style.display = "grid";
+};
+$("viewer").onclick = () => { $("viewer").style.display = "none"; };
+loadItems();
+</script>
+</body>
+</html>

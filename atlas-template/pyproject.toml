@@ -1,0 +1,24 @@
+[project]
+name = "atlas-template"
+version = "0.1.0"
+description = "Atlas & Sub-agents: a lean template of a knowledge backbone (ingest once, ask many times, every sentence cited and checked)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi", "uvicorn", "python-multipart",
+  "google-genai",                 # Gemini 3.8 Flash: reads hard pages, writes once
+  "google-antigravity>=0.1.21",   # Antigravity SDK: sealed scouts
+  "sentence-transformers[image]", "torchvision",   # EmbeddingGemma 2, on your machine
+  "typesafe-sdk>=0.7.4",          # System 1 decisions
+  "pymupdf", "pillow", "numpy", "pydantic",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
